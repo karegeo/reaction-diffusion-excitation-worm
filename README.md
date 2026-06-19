@@ -12,7 +12,10 @@ heading the excitation defines. The worm crawls ~1.5 body-lengths in a straight
 line; its centre of mass advances in x while y stays pinned (see `com.png`).*
 
 ```
-python3 worm.py        # runs the simulation, writes worm_crawl.gif and com.png
+python3 worm.py          # the straight crawler  -> worm_crawl.gif, com.png
+python3 compare.py        # classic RD vs this    -> comparison.gif
+python3 s_worm.py         # an S-shaped worm      -> worm_s_shape.gif
+python3 s_worm.py noise   # noise-ignited waves   -> worm_noise.gif
 ```
 
 ## The problem
@@ -120,3 +123,57 @@ sets polarity and drives motion) is the same one used for real directed motion:
 * **Belousov–Zhabotinsky self-oscillating gels** (Yoshida) — chemical excitable
   waves producing worm-like peristaltic locomotion in the lab.
 * **Min** protein oscillations in *E. coli* — RD that defines spatial polarity.
+
+## Classic RD worm vs. this one (`compare.py`)
+
+![comparison](comparison.gif)
+
+Left: **Gray–Scott** in its "worms" regime — the canonical RD worm. It grows,
+branches and splits in *all* directions; it is a spreading colony with no
+heading. Right: the **excitable-layer worm** — the extra field gives it a
+polarity, so it travels along its own axis. Same reaction–diffusion idea; the
+excitation is the one ingredient that converts undirected growth into a crawl.
+
+## Variations (`s_worm.py`)
+
+**S-shaped / serpentine worm** — the body is an S-tube and is advected by a
+*local* velocity `V = c(−∇v)`, in conservative flux form `−∇·(φV)` so area is
+preserved. The excitation runs head-ward along the curve (each pulse trailing a
+refractory tail) and the body creeps after it.
+
+![S worm](worm_s_shape.gif)
+
+*Net forward progress along the curve is modest: symmetric local pushing on a
+bent body largely cancels — real snakes need anisotropic friction to net-advance.
+The straight worm, with one heading, translocates much more decisively.*
+
+**Random noise** (`python3 s_worm.py noise`) — turn the pacemaker off and add a
+stochastic kick to the excitation. Above a small threshold the noise
+**spontaneously nucleates the waves itself** (you can watch target waves ignite
+at random points), so the explicit pacemaker isn't fundamental.
+
+![noise worm](worm_noise.gif)
+
+## Is it really *just* reaction–diffusion?
+
+Essentially yes — the core is three coupled fields:
+
+* `phi` (body) — a reaction–diffusion / phase-field PDE,
+* `u` (excitation) — a reaction–diffusion PDE (Barkley), gated by `phi`,
+* `v` (recovery) — a relaxation equation (no diffusion → a local ODE per point).
+
+The excitable layer is itself reaction–diffusion, so at heart this is **RD for
+the body + an RD excitable layer + its recovery variable**, coupled locally
+(`u,v` gated by `phi`; the body advected by `−∇v`).
+
+In full honesty, the *first* version (`worm.py`) adds two conveniences that are
+**not** pure local PDE terms:
+
+1. a **discrete pacemaker** — a periodic stimulus injected at the tail, and
+2. a **global heading read-out** — it integrates `−∇v` over the whole worm to
+   get one polarity vector and advects the body rigidly by it.
+
+Both are avoidable. `s_worm.py` replaces (2) with a purely **local** advection
+term, and the **noise** demo replaces (1) with a stochastic term that lets the
+medium ignite its own waves. Written that way, it is genuinely *just coupled
+PDEs (plus noise) — nothing else*.
