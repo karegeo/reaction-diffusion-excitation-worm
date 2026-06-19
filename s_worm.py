@@ -39,7 +39,7 @@ def build_S(Nx, Ny, amp=34.0, x0=45, x1=210, radius=10.0, periods=1.5):
 
 
 class S:
-    Nx, Ny = 300, 170
+    Nx, Ny = 430, 170
     dt = 0.02
     nsteps = 9000
     a, b, eps = 0.75, 0.01, 0.02
@@ -48,18 +48,24 @@ class S:
     Dphi = 0.4
     tau = 0.8
     mu = 0.6
-    c_local = 4.0          # local advection strength (slither speed)
-    pace_every = 850
+    v_crawl = 1.2          # glide speed (translation along the global heading)
+    lp = 0.05              # heading smoothing
+    act_ref = None
+    pace_every = 700
     pace_radius = 7
+    rear_frac = 0.16       # pacemaker fires in the rear-most slice of the body
     noise = 0.0            # stochastic kick to the excitation (try ~0.05)
 
 
 def simulate_s(p, record_every=60):
-    X, Y, phi, (tail_x, tail_y) = build_S(p.Nx, p.Ny)
+    X, Y, phi, _ = build_S(p.Nx, p.Ny, amp=30, x0=35, x1=185,
+                           radius=10.0, periods=1.5)
     A0 = phi.sum()
     u = np.zeros_like(phi); v = np.zeros_like(phi)
-    seed = np.hypot(X - tail_x, Y - tail_y) < 7
-    u[seed] = 1.0
+    body0 = phi > 0.5
+    sx = X[body0].min(); sy = Y[body0][np.argmin(X[body0])]
+    u[np.hypot(X - sx, Y - sy) < 7] = 1.0          # seed pulse at the tail
+    Phx, Phy = 1.0, 0.0
     rng = np.random.default_rng(0)
 
     frames = []
@@ -72,22 +78,43 @@ def simulate_s(p, record_every=60):
         u = np.clip(u + p.dt * du, 0.0, 1.0)
         v = v + p.dt * (phi * (u - v))
 
-        # pacemaker at the tail end of the S
+        # pacemaker at the current rear of the worm (rear-most along heading)
         if p.pace_every and step % p.pace_every == 0:
-            tip = np.hypot(X - tail_x, Y - tail_y) < p.pace_radius
-            u[tip & (phi > 0.3)] = 1.0
+            body = phi > 0.5
+            if body.any():
+                proj = X * Phx + Y * Phy
+                pmin = proj[body].min(); span = proj[body].max() - pmin + 1e-9
+                rear = body & (proj < pmin + p.rear_frac * span)
+                if rear.any():
+                    ry, rx = np.argwhere(rear).mean(axis=0)
+                    u[(np.hypot(X - rx, Y - ry) < p.pace_radius) & (phi > 0.3)] = 1.0
 
-        # LOCAL advection in conservative (flux) form so AREA is preserved:
-        #   V = c(-grad v),   dphi/dt += -div(phi V)
+        # global heading P = <-grad v> over the worm; rigid translation by it
         vx, vy = grad(v)
-        Vx, Vy = -p.c_local * vx, -p.c_local * vy
-        adv = -(grad(phi * Vx)[0] + grad(phi * Vy)[1])
+        wgt = phi * u
+        activity = wgt.sum()
+        if p.act_ref is None and activity > 0:
+            p.act_ref = max(activity, 1.0)
+        if activity > 1e-6:
+            tx, ty = -(wgt * vx).sum(), -(wgt * vy).sum()
+            n = np.hypot(tx, ty) + 1e-9
+            Phx += p.lp * (tx / n - Phx)
+            Phy += p.lp * (ty / n - Phy)
+            Phy *= 0.97
+            n2 = np.hypot(Phx, Phy) + 1e-9
+            Phx, Phy = Phx / n2, Phy / n2
+        go = 0.0 if not p.act_ref else min(activity / p.act_ref, 1.0)
+
+        gx, gy = grad(phi)
         A = phi.sum()
         cohesion = (phi * (1 - phi) * (phi - 0.5 + p.mu * (A0 - A) / A0)) / p.tau
+        Vx, Vy = p.v_crawl * go * Phx, p.v_crawl * go * Phy
+        adv = -(Vx * gx + Vy * gy)
         phi = np.clip(phi + p.dt * (p.Dphi * lap9(phi) + cohesion + adv), 0, 1)
 
         if record_every and step % record_every == 0:
-            frames.append((phi.copy(), u.copy(), v.copy()))
+            cx = (phi * X).sum() / phi.sum()
+            frames.append((phi.copy(), u.copy(), v.copy(), cx))
     return frames, A0, phi.sum()
 
 
@@ -99,11 +126,11 @@ def render(frames, fname, title, colors=96):
 
     fig, ax = plt.subplots(figsize=(6.6, 3.7), dpi=110)
     fig.patch.set_facecolor("#0d0e12"); ax.set_facecolor("#0d0e12")
-    im = ax.imshow(compose_rgb(*frames[0]), origin="lower",
+    im = ax.imshow(compose_rgb(*frames[0][:3]), origin="lower",
                    interpolation="bilinear", animated=True)
     ax.set_xticks([]); ax.set_yticks([])
     ax.set_title(title, color="#aeb6c2", fontsize=8.5)
-    anim = FuncAnimation(fig, lambda i: (im.set_array(compose_rgb(*frames[i])),),
+    anim = FuncAnimation(fig, lambda i: (im.set_array(compose_rgb(*frames[i][:3])),),
                          frames=len(frames), interval=60, blit=False)
     anim.save(fname, writer=PillowWriter(fps=18))
     plt.close(fig)
@@ -122,20 +149,23 @@ def main(scenario="slither"):
     import time
     p = S()
     if scenario == "noise":
-        # no pacemaker: random noise alone spontaneously nucleates the waves
+        # no pacemaker, no crawl: show that random noise alone ignites the waves
         p.pace_every = 0
         p.noise = 0.05
+        p.v_crawl = 0.0
         title = ("no pacemaker -- random noise alone keeps igniting the "
-                 "excitable waves (then the body creeps after them)")
+                 "excitable waves on the body")
         fname = "worm_noise.gif"
     else:
-        title = ("S-shaped worm: the excitation wave runs head-ward along the "
-                 "curve, leaving a refractory tail")
+        title = ("S-shaped worm gliding along its heading -- the wave runs "
+                 "head-ward, refractory tail in magenta")
         fname = "worm_s_shape.gif"
 
     t0 = time.time()
     frames, A0, A = simulate_s(p, record_every=90)
-    print(f"sim {time.time()-t0:.1f}s  area {A0:.0f}->{A:.0f}  frames={len(frames)}")
+    dx = frames[-1][3] - frames[0][3]
+    print(f"sim {time.time()-t0:.1f}s  area {A0:.0f}->{A:.0f}  "
+          f"frames={len(frames)}  centre-of-mass dx={dx:+.1f}")
     render(frames, fname, title)
 
 

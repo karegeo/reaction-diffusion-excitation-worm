@@ -136,16 +136,19 @@ excitation is the one ingredient that converts undirected growth into a crawl.
 
 ## Variations (`s_worm.py`)
 
-**S-shaped / serpentine worm** — the body is an S-tube and is advected by a
-*local* velocity `V = c(−∇v)`, in conservative flux form `−∇·(φV)` so area is
-preserved. The excitation runs head-ward along the curve (each pulse trailing a
-refractory tail) and the body creeps after it.
+**S-shaped / serpentine worm** — the body is an S-tube driven by the same
+heading the straight worm uses, so it **glides** decisively along its long axis
+(centre of mass advances ~one body-length) while the wave train runs head-ward
+through the curve, each pulse trailing a refractory tail.
 
 ![S worm](worm_s_shape.gif)
 
-*Net forward progress along the curve is modest: symmetric local pushing on a
-bent body largely cancels — real snakes need anisotropic friction to net-advance.
-The straight worm, with one heading, translocates much more decisively.*
+*This is gliding along the heading, not yet true undulatory slithering. A free
+body that merely undulates in empty space cannot net-translocate: if you drive
+it by the purely local velocity `V = c(−∇v)`, the recovery gradient flips sign
+across each pulse and the forward/back pushes cancel (≈ the reason real snakes
+need **anisotropic friction** — grip sideways, slip forward — to advance). Giving
+the body one coherent heading sidesteps that and makes it move.*
 
 **Random noise** (`python3 s_worm.py noise`) — turn the pacemaker off and add a
 stochastic kick to the excitation. Above a small threshold the noise
@@ -173,7 +176,11 @@ In full honesty, the *first* version (`worm.py`) adds two conveniences that are
 2. a **global heading read-out** — it integrates `−∇v` over the whole worm to
    get one polarity vector and advects the body rigidly by it.
 
-Both are avoidable. `s_worm.py` replaces (2) with a purely **local** advection
-term, and the **noise** demo replaces (1) with a stochastic term that lets the
-medium ignite its own waves. Written that way, it is genuinely *just coupled
-PDEs (plus noise) — nothing else*.
+The pacemaker (1) is genuinely avoidable: the **noise** demo replaces it with a
+stochastic term that lets the medium ignite its own waves. The heading read-out
+(2) is the one ingredient that is honestly *not* a local PDE term. You *can*
+write a purely local drive `V = c(−∇v)`, but it cannot net-propel a free
+undulating body (the sign-cancellation above) — so a decisive crawl needs either
+this global read-out or an explicit substrate/friction term. So the fairest
+summary is: **RD body + RD excitable layer + recovery, plus one non-local
+heading read-out** (and the pacemaker can be pure noise).
