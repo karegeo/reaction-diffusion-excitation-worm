@@ -61,9 +61,82 @@ def run(p, nsteps, seed=0, record_every=0):
                 traj=traj, snaps=snaps)
 
 
-BASE = dict(N=128, dt=0.01, Du=1.0, lam=2.0, k1=-0.2, k3=0.5, k4=0.5,
-            Dv=8.0, tv=1.0, Dw=16.0, tw=1.0, ubg=-1.07, uhi=0.87, R=8.0,
-            noise=0.005)
+BASE = dict(N=128, dt=0.006, Du=1.0, lam=6.0, k1=-0.8, k3=1.0, k4=1.0,
+            Dv=3.0, tv=1.0, Dw=30.0, tw=1.0, ubg=-2.1, uhi=1.8, R=8.0,
+            noise=0.006)
+
+
+def simulate_worm(p, nsteps, record_every=40, body_decay=0.004, body_gain=0.02):
+    """Run the self-propelled soliton and let it paint a slowly-fading BODY
+    trail (b). The head (u) moves by itself (drift bifurcation); the body is
+    just a memory of where the emergent head has wandered -> a living worm."""
+    rng = np.random.default_rng(p.get("rseed", 3))
+    N = p["N"]
+    Y, X = np.mgrid[0:N, 0:N].astype(float)
+    r2 = (X - N / 2) ** 2 + (Y - N / 2) ** 2
+    u = p["ubg"] + (p["uhi"] - p["ubg"]) * np.exp(-r2 / (2 * p["R"] ** 2))
+    v = u.copy(); w = u.copy(); b = np.zeros_like(u)
+    thr = 0.5 * (p["uhi"] + p["ubg"])
+    dt = p["dt"]
+    frames, trail = [], []
+    for s in range(nsteps):
+        u = u + dt * (p["Du"] * lap(u) + p["lam"] * u - u ** 3
+                      - p["k3"] * v - p["k4"] * w + p["k1"]) \
+            + p["noise"] * np.sqrt(dt) * rng.standard_normal(u.shape)
+        np.clip(u, -5.0, 5.0, out=u)
+        v = v + (dt / p["tv"]) * (p["Dv"] * lap(v) + u - v)
+        w = w + (dt / p["tw"]) * (p["Dw"] * lap(w) + u - w)
+        b = b + body_gain * np.maximum(u - thr, 0.0) - body_decay * b
+        if record_every and s % record_every == 0:
+            m = np.maximum(u - p["ubg"], 0.0); tot = m.sum() + 1e-9
+            trail.append(((m * X).sum() / tot, (m * Y).sum() / tot))
+            frames.append((u.copy(), b.copy()))
+    return frames, trail
+
+
+def render_worm(p, frames, trail, fname="worm_alive.gif"):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation, PillowWriter
+    thr = 0.5 * (p["uhi"] + p["ubg"])
+    bmax = max(f[1].max() for f in frames) + 1e-9
+
+    def rgb(u, b):
+        bg = np.array([0.05, 0.06, 0.09]); body = np.array([0.10, 0.45, 0.55])
+        img = np.broadcast_to(bg, u.shape + (3,)).copy()
+        a = np.clip(b / bmax, 0, 1)[..., None]
+        img = img * (1 - a) + body * a
+        hot = np.clip((u - thr) / (p["uhi"] - thr + 1e-9), 0, 1)
+        h = np.stack([np.clip(1.3 * hot, 0, 1), np.clip(1.5 * hot - .4, 0, 1),
+                      np.clip(2.0 * hot - 1.2, 0, 1)], -1)
+        ah = hot[..., None]
+        return np.clip(img * (1 - ah) + h * ah, 0, 1)
+
+    fig, ax = plt.subplots(figsize=(5.2, 5.2), dpi=110)
+    fig.patch.set_facecolor("#0d0e12")
+    im = ax.imshow(rgb(*frames[0]), origin="lower", interpolation="bilinear")
+    (tr,) = ax.plot([], [], color="#7fe7ff", lw=0.8, alpha=0.5)
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title("emergent crawl: the spot propels ITSELF (drift bifurcation); "
+                 "noise wanders the heading", color="#aeb6c2", fontsize=8)
+    xs, ys = [], []
+
+    def update(i):
+        im.set_array(rgb(*frames[i]))
+        xs.append(trail[i][0]); ys.append(trail[i][1]); tr.set_data(xs, ys)
+        return im, tr
+
+    anim = FuncAnimation(fig, update, frames=len(frames), interval=55)
+    anim.save(fname, writer=PillowWriter(fps=20)); plt.close(fig)
+    from PIL import Image, ImageSequence
+    im2 = Image.open(fname)
+    fr = [f.convert("RGB").quantize(colors=96, method=Image.MEDIANCUT)
+          for f in ImageSequence.Iterator(im2)]
+    fr[0].save(fname, save_all=True, append_images=fr[1:], loop=0,
+               duration=55, optimize=True)
+    import os
+    print(f"wrote {fname} ({os.path.getsize(fname)/1e6:.2f} MB)")
 
 
 if __name__ == "__main__":
@@ -71,14 +144,21 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["scan"]:
         print(f"{'tw':>5} {'k4':>5} {'Dw':>5} | {'disp':>7} {'area':>6} "
               f"{'umax':>6} {'umin':>6}")
-        for tw in [2.0, 3.0, 4.0, 6.0, 8.0, 11.0, 15.0]:
-            for k4 in [0.5]:
-                p = dict(BASE); p["tw"] = tw; p["k4"] = k4
-                r = run(p, nsteps=12000, seed=1)
-                tag = "MOVES" if (r["area"] > 30 and r["disp"] > 5) else \
-                      ("alive" if r["area"] > 30 else "dead")
-                print(f"{tw:5.0f} {k4:5.1f} {p['Dw']:5.0f} | {r['disp']:7.1f} "
-                      f"{r['area']:6d} {r['umax']:6.2f} {r['umin']:6.2f}  {tag}")
+        # drift comes from a SLOW LOCALIZING inhibitor: the spot rolls out of
+        # its own lagging well. Make v slow (large tv); w off (k4=0).
+        print(f"{'tv':>5} {'Dv':>5} {'k3':>5} | {'disp':>7} {'area':>6} "
+              f"{'umax':>6} {'umin':>6}")
+        # robust deep-bistable spot + TIGHT slow localizer v (roll-out -> drift),
+        # broad fast w for global stability. Scan how slow v is.
+        print(f"{'tv':>5} {'Dv':>5} {'Dw':>5} | {'disp':>7} {'area':>6} "
+              f"{'umax':>6} {'umin':>6}")
+        for tv in [1.0, 6.0, 12.0, 20.0, 32.0, 48.0]:
+            p = dict(BASE); p["N"] = 80; p["tv"] = tv
+            r = run(p, nsteps=14000, seed=1)
+            tag = "MOVES" if (r["area"] > 30 and r["disp"] > 5) else \
+                  ("alive" if r["area"] > 30 else "dead")
+            print(f"{tv:5.0f} {p['Dv']:5.0f} {p['Dw']:5.0f} | {r['disp']:7.1f} "
+                  f"{r['area']:6d} {r['umax']:6.2f} {r['umin']:6.2f}  {tag}")
     else:
         # single config, time series -> first confirm a stable spot exists
         p = dict(BASE)

@@ -17,7 +17,47 @@ python3 compare.py        # classic RD vs this    -> comparison.gif
 python3 s_worm.py         # an S-shaped worm      -> worm_s_shape.gif
 python3 s_worm.py noise   # noise-ignited waves   -> worm_noise.gif
 python3 slither.py        # mass-conserving slither -> worm_slither.gif
+python3 life.py           # EMERGENT self-propelled wanderer -> worm_alive.gif
+python3 alife.py scan     # (exploration) pure-RD drift-soliton parameter scan
 ```
+
+## Emergent self-propulsion — nothing moved by hand (`life.py`)
+
+Everything above is, to some degree, *driven*: the crawler/glide use a heading
+read-out, and the slither literally solves the body's velocity each step. The
+honest "artificial life" test is a pattern that moves **on its own**, with the
+direction never imposed. This is that.
+
+A cohesive droplet (phase field `phi`) secretes a slowly-decaying repellent `c`
+and is pushed down its own `c`-gradient — written as a reaction-diffusion
+**cross-diffusion** term `+chi div(phi grad c)`, *not* an imposed velocity:
+
+```
+dphi/dt = Dphi lap phi + cohesion/area + chi div(phi grad c) + noise
+dc/dt   = Dc lap c + beta phi - gamma c           # the secreted trail
+```
+
+A symmetric droplet builds a symmetric `c` bump and feels no net push — but that
+state is **unstable**: a noise fluctuation nudges it, the trail it leaves raises
+`c` behind it, and `grad c` then pushes it further the same way. Symmetry breaks
+**spontaneously** and it self-propels; it cannot return where it just was (high
+`c` there) — your original *"refractory tail forbids going backward,"* now as the
+engine of locomotion. In a box it flees walls and its own trail, so it **wanders
+and explores** like something alive; noise keeps the heading meandering.
+
+![artificial life](worm_alive.gif)
+
+```
+emergent path length ~ 1150 (it roams the whole box)
+head mass: change ~ -11 %     # the moving body is conserved, not grown/decayed
+```
+
+Nothing computes a direction — the heading is an emergent, self-amplified
+symmetry breaking. (The companion `alife.py` is my attempt at the "purest"
+version — a three-component drift-bifurcation soliton that moves with *no*
+advection at all; in the parameter ranges I scanned it stays stationary or
+suffers amplitude death, so `life.py`'s self-avoiding droplet is the robust
+route to the same emergent end.)
 
 ## The problem
 
