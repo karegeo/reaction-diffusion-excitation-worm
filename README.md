@@ -16,6 +16,7 @@ python3 worm.py          # the straight crawler  -> worm_crawl.gif, com.png
 python3 compare.py        # classic RD vs this    -> comparison.gif
 python3 s_worm.py         # an S-shaped worm      -> worm_s_shape.gif
 python3 s_worm.py noise   # noise-ignited waves   -> worm_noise.gif
+python3 slither.py        # mass-conserving slither -> worm_slither.gif
 ```
 
 ## The problem
@@ -156,6 +157,34 @@ stochastic kick to the excitation. Above a small threshold the noise
 at random points), so the explicit pacemaker isn't fundamental.
 
 ![noise worm](worm_noise.gif)
+
+## True slithering, with mass conserved (`slither.py`)
+
+A fair worry about the crawler/glide: is the "movement" just **balanced growth
+and decay** — phase appearing at the head and vanishing at the tail — rather than
+the *same* body actually relocating? In the phase-field models the interface does
+move partly through a reaction term (local birth/death at the edge), kept
+globally balanced by the area term; total mass drifts only ~1–6 %, but locally
+there *is* turnover.
+
+`slither.py` removes that ambiguity. The body is a fixed-length filament — **no
+growth or decay term anywhere** — that undulates via a travelling curvature wave
+(the excitable "muscle"/CPG signal) and is propelled by **anisotropic drag**
+(it slips along its length easily, sideways with difficulty), solved force- and
+torque-free each instant (resistive-force theory). It is the *same* material the
+whole time:
+
+```
+net displacement = 1.70 body-lengths
+body length (≡ mass): change = 0.000 %     # exactly conserved
+```
+
+![slithering worm](worm_slither.gif)
+
+This is the honest test of locomotion: the worm moves a real distance while its
+total mass never changes. (Drop the drag anisotropy — make sideways and
+lengthwise drag equal — and the net displacement collapses to ~0: a free body
+undulating in empty space cannot move, exactly as expected.)
 
 ## Is it really *just* reaction–diffusion?
 
