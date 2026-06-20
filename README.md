@@ -16,7 +16,48 @@ python3 worm.py          # the straight crawler  -> worm_crawl.gif, com.png
 python3 compare.py        # classic RD vs this    -> comparison.gif
 python3 s_worm.py         # an S-shaped worm      -> worm_s_shape.gif
 python3 s_worm.py noise   # noise-ignited waves   -> worm_noise.gif
+python3 slither.py        # mass-conserving slither -> worm_slither.gif
+python3 life.py           # EMERGENT self-propelled wanderer -> worm_alive.gif
+python3 alife.py scan     # (exploration) pure-RD drift-soliton parameter scan
 ```
+
+## Emergent self-propulsion — nothing moved by hand (`life.py`)
+
+Everything above is, to some degree, *driven*: the crawler/glide use a heading
+read-out, and the slither literally solves the body's velocity each step. The
+honest "artificial life" test is a pattern that moves **on its own**, with the
+direction never imposed. This is that.
+
+A cohesive droplet (phase field `phi`) secretes a slowly-decaying repellent `c`
+and is pushed down its own `c`-gradient — written as a reaction-diffusion
+**cross-diffusion** term `+chi div(phi grad c)`, *not* an imposed velocity:
+
+```
+dphi/dt = Dphi lap phi + cohesion/area + chi div(phi grad c) + noise
+dc/dt   = Dc lap c + beta phi - gamma c           # the secreted trail
+```
+
+A symmetric droplet builds a symmetric `c` bump and feels no net push — but that
+state is **unstable**: a noise fluctuation nudges it, the trail it leaves raises
+`c` behind it, and `grad c` then pushes it further the same way. Symmetry breaks
+**spontaneously** and it self-propels; it cannot return where it just was (high
+`c` there) — your original *"refractory tail forbids going backward,"* now as the
+engine of locomotion. In a box it flees walls and its own trail, so it **wanders
+and explores** like something alive; noise keeps the heading meandering.
+
+![artificial life](worm_alive.gif)
+
+```
+emergent path length ~ 1150 (it roams the whole box)
+head mass: change ~ -11 %     # the moving body is conserved, not grown/decayed
+```
+
+Nothing computes a direction — the heading is an emergent, self-amplified
+symmetry breaking. (The companion `alife.py` is my attempt at the "purest"
+version — a three-component drift-bifurcation soliton that moves with *no*
+advection at all; in the parameter ranges I scanned it stays stationary or
+suffers amplitude death, so `life.py`'s self-avoiding droplet is the robust
+route to the same emergent end.)
 
 ## The problem
 
@@ -156,6 +197,34 @@ stochastic kick to the excitation. Above a small threshold the noise
 at random points), so the explicit pacemaker isn't fundamental.
 
 ![noise worm](worm_noise.gif)
+
+## True slithering, with mass conserved (`slither.py`)
+
+A fair worry about the crawler/glide: is the "movement" just **balanced growth
+and decay** — phase appearing at the head and vanishing at the tail — rather than
+the *same* body actually relocating? In the phase-field models the interface does
+move partly through a reaction term (local birth/death at the edge), kept
+globally balanced by the area term; total mass drifts only ~1–6 %, but locally
+there *is* turnover.
+
+`slither.py` removes that ambiguity. The body is a fixed-length filament — **no
+growth or decay term anywhere** — that undulates via a travelling curvature wave
+(the excitable "muscle"/CPG signal) and is propelled by **anisotropic drag**
+(it slips along its length easily, sideways with difficulty), solved force- and
+torque-free each instant (resistive-force theory). It is the *same* material the
+whole time:
+
+```
+net displacement = 1.70 body-lengths
+body length (≡ mass): change = 0.000 %     # exactly conserved
+```
+
+![slithering worm](worm_slither.gif)
+
+This is the honest test of locomotion: the worm moves a real distance while its
+total mass never changes. (Drop the drag anisotropy — make sideways and
+lengthwise drag equal — and the net displacement collapses to ~0: a free body
+undulating in empty space cannot move, exactly as expected.)
 
 ## Is it really *just* reaction–diffusion?
 
