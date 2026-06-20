@@ -23,33 +23,31 @@ doesn't create it); the area term only counters phase-field shrinkage.
 import numpy as np
 
 
-def lap(f):                                   # zero-flux (Neumann) boundaries
-    fp = np.pad(f, 1, mode="edge")
-    return (fp[:-2, 1:-1] + fp[2:, 1:-1] + fp[1:-1, :-2] + fp[1:-1, 2:]
-            - 4.0 * f)
+def lap(f):                                   # periodic (torus): no walls to hug
+    return (-4.0 * f + np.roll(f, 1, 0) + np.roll(f, -1, 0)
+            + np.roll(f, 1, 1) + np.roll(f, -1, 1))
 
 
 def grad(f):
-    fp = np.pad(f, 1, mode="edge")
-    fx = 0.5 * (fp[1:-1, 2:] - fp[1:-1, :-2])
-    fy = 0.5 * (fp[2:, 1:-1] - fp[:-2, 1:-1])
+    fx = 0.5 * (np.roll(f, -1, 1) - np.roll(f, 1, 1))
+    fy = 0.5 * (np.roll(f, -1, 0) - np.roll(f, 1, 0))
     return fx, fy
 
 
 class Cfg:
-    N = 160
+    N = 200
     dt = 0.1
     Dphi = 0.6
     tau = 0.9
     mu = 1.5           # area (mass) restoring
     Dc = 1.5
     beta = 0.7         # repellent secretion
-    gamma = 0.015      # repellent decay (1/gamma = trail memory)
+    gamma = 0.035      # repellent decay (1/gamma = trail memory)
     chi = 3.6          # propulsion (chemotactic repulsion from own trail)
     noise = 0.02
     R0 = 12.0
-    bgain = 0.06       # body-trail deposition (the visible snake body)
-    bdecay = 0.022     # body-trail decay (sets snake length)
+    bgain = 0.5        # body deposition (the permanent, growing snake body)
+    kappa_b = 0.35     # gentle long-term self-avoidance (c does the propelling)
 
 
 def simulate(c, nsteps, record_every=0, rseed=0):
@@ -62,21 +60,22 @@ def simulate(c, nsteps, record_every=0, rseed=0):
     bb = np.zeros_like(phi)            # visible body trail (the snake's body)
     A0 = phi.sum()
 
-    def centroid():
-        tot = phi.sum() + 1e-9
-        return (phi * X).sum() / tot, (phi * Y).sum() / tot
+    def centroid():                                   # circular mean (periodic)
+        ax = np.angle((phi * np.exp(2j * np.pi * X / N)).sum())
+        ay = np.angle((phi * np.exp(2j * np.pi * Y / N)).sum())
+        return (ax % (2 * np.pi)) * N / (2 * np.pi), (ay % (2 * np.pi)) * N / (2 * np.pi)
 
     frames, traj = [], []
     for s in range(nsteps):
-        cx, cy = grad(cc)
-        cross = c.chi * (grad(phi * cx)[0] + grad(phi * cy)[1])   # +chi div(phi grad c)
+        cx, cy = grad(cc + c.kappa_b * bb)        # flee secreted chemical AND own body
+        cross = c.chi * (grad(phi * cx)[0] + grad(phi * cy)[1])
         A = phi.sum()
         cohesion = (phi * (1 - phi) * (phi - 0.5 + c.mu * (A0 - A) / A0)) / c.tau
         phi = phi + c.dt * (c.Dphi * lap(phi) + cohesion + cross) \
             + c.noise * np.sqrt(c.dt) * rng.standard_normal(phi.shape) * phi
         np.clip(phi, 0.0, 1.0, out=phi)
         cc = cc + c.dt * (c.Dc * lap(cc) + c.beta * phi - c.gamma * cc)
-        bb = bb + c.dt * (c.bgain * np.maximum(phi - 0.5, 0.0) - c.bdecay * bb)
+        bb = bb + c.dt * c.bgain * np.maximum(phi - 0.5, 0.0) * (1.0 - bb)  # permanent, saturating
 
         if record_every and s % record_every == 0:
             frames.append((phi.copy(), bb.copy()))
@@ -94,26 +93,23 @@ def render(cfg, frames, traj, fname="worm_alive.gif"):
     def rgb(phi, b):
         bg = np.array([0.05, 0.06, 0.09])
         img = np.broadcast_to(bg, phi.shape + (3,)).copy()
-        body = (np.clip(b / bmax, 0, 1) ** 0.5)[..., None]         # snake body (trail)
-        img = img * (1 - body) + np.array([0.12, 0.64, 0.72]) * body
-        core = np.clip(phi, 0, 1)[..., None]                       # bright head
-        img = img * (1 - core) + np.array([0.88, 0.98, 1.0]) * core
+        body = np.clip((b / bmax - 0.12) / 0.4, 0, 1)[..., None]   # crisp snake body
+        img = img * (1 - body) + np.array([0.12, 0.66, 0.74]) * body
+        core = np.clip((phi - 0.5) / 0.5, 0, 1)[..., None]         # bright head
+        img = img * (1 - core) + np.array([0.90, 0.98, 1.0]) * core
         return np.clip(img, 0, 1)
 
     fig, ax = plt.subplots(figsize=(5.4, 5.4), dpi=110)
     fig.patch.set_facecolor("#0d0e12")
     im = ax.imshow(rgb(*frames[0]), origin="lower", interpolation="bilinear")
-    (tr,) = ax.plot([], [], color="#8fefff", lw=0.9, alpha=0.55)
     ax.set_xticks([]); ax.set_yticks([])
-    ax.set_title("artificial life: the droplet flees its own secreted trail; "
-                 "noise wanders the heading — nothing steered by hand",
-                 color="#aeb6c2", fontsize=7.6)
-    xs, ys = [], []
+    ax.set_title("artificial life: a self-propelled head (it flees its own "
+                 "secreted trail) grows a body & wanders — nothing steered by hand",
+                 color="#aeb6c2", fontsize=7.0)
 
     def update(i):
         im.set_array(rgb(*frames[i]))
-        xs.append(traj[i][0]); ys.append(traj[i][1]); tr.set_data(xs, ys)
-        return im, tr
+        return (im,)
 
     anim = FuncAnimation(fig, update, frames=len(frames), interval=55)
     anim.save(fname, writer=PillowWriter(fps=20)); plt.close(fig)
@@ -129,7 +125,7 @@ def render(cfg, frames, traj, fname="worm_alive.gif"):
 
 if __name__ == "__main__":
     c = Cfg()
-    frames, traj, A0, A = simulate(c, nsteps=9000, record_every=90)
+    frames, traj, A0, A = simulate(c, nsteps=8000, record_every=80)
     tr = np.array(traj)
     path = np.sum(np.hypot(*np.diff(tr, axis=0).T))
     print(f"area {A0:.0f}->{A:.0f} ({100*(A-A0)/A0:+.1f}%)  "

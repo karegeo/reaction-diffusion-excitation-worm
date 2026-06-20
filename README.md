@@ -42,14 +42,18 @@ state is **unstable**: a noise fluctuation nudges it, the trail it leaves raises
 `c` behind it, and `grad c` then pushes it further the same way. Symmetry breaks
 **spontaneously** and it self-propels; it cannot return where it just was (high
 `c` there) — your original *"refractory tail forbids going backward,"* now as the
-engine of locomotion. In a box it flees walls and its own trail, so it **wanders
-and explores** like something alive; noise keeps the heading meandering.
+engine of locomotion. Noise keeps the heading meandering.
+
+As it goes it lays down a permanent **body** `b` and is also (gently) repelled by
+it, so it grows a self-avoiding, ever-extending body while it wanders — a
+*growing natural pattern enriched by noise*, exactly the brief:
 
 ![artificial life](worm_alive.gif)
 
 ```
-emergent path length ~ 1150 (it roams the whole box)
-head mass: change ~ -11 %     # the moving body is conserved, not grown/decayed
+emergent path length ~ 2050      # the head roams on its own
+body grows from 0 -> ~15000 cells # a growing pattern, laid down as it moves
+head mass change ~ -9 %          # the moving head is conserved, not birthed/decayed
 ```
 
 Nothing computes a direction — the heading is an emergent, self-amplified
